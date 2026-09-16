@@ -1,0 +1,8 @@
+{
+  "pattern_id": "scientific-model-selection",
+  "source_family": "mathematical-sciences/statistics",
+  "workflow": "compare mechanistic candidate models under noisy observations and select the model that generalizes to held-out data",
+  "scientific_outputs": ["model comparison table", "selected model", "reproducible analysis"],
+  "hardness_knobs": ["correlated predictors", "heteroscedastic noise", "nested near-miss models", "out-of-sample criterion"],
+  "derivation_rules": "Regenerate data and candidate families. The verifier checks predictive and structural constraints without exposing the winning model."
+}

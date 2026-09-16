@@ -1,0 +1,34 @@
+[
+  {
+    "pattern_id": "nonlinear-dynamics-discovery",
+    "source_family": "mathematical-sciences/applied-mathematics",
+    "workflow": "infer a compact nonlinear dynamical law from noisy multivariate trajectories and validate it on held-out initial conditions",
+    "scientific_outputs": ["symbolic model", "held-out rollout table", "diagnostic report"],
+    "hardness_knobs": ["unknown active basis", "measurement noise", "off-trajectory stress cases", "complexity budget"],
+    "derivation_rules": "Change state dimension, sampling schedule, noise process, and hidden law family. Never reuse source equations, constants, filenames, or answer values."
+  },
+  {
+    "pattern_id": "inverse-imaging-reconstruction",
+    "source_family": "life-sciences/neuroscience",
+    "workflow": "recover a quantitative image or field from corrupted measurements, then report uncertainty and reconstruction diagnostics",
+    "scientific_outputs": ["reconstruction artifact", "quality metrics", "uncertainty summary"],
+    "hardness_knobs": ["structured corruption", "ill-conditioned inverse map", "held-out perturbations", "artifact schema"],
+    "derivation_rules": "Generate new measurement operators and data seeds. Keep hidden reference arrays in verifier-only fixtures."
+  },
+  {
+    "pattern_id": "sensor-calibration",
+    "source_family": "engineering-sciences/electrical-engineering",
+    "workflow": "estimate calibration parameters from multi-sensor observations and demonstrate accuracy on an unseen operating regime",
+    "scientific_outputs": ["calibration parameters", "corrected measurements", "residual report"],
+    "hardness_knobs": ["coupled bias and scale", "missing samples", "regime shift", "physical constraints"],
+    "derivation_rules": "Use fresh sensor geometries and values; do not disclose hidden calibration parameters to the agent."
+  },
+  {
+    "pattern_id": "scientific-model-selection",
+    "source_family": "mathematical-sciences/statistics",
+    "workflow": "compare mechanistic candidate models under noisy observations and select the model that generalizes to held-out data",
+    "scientific_outputs": ["model comparison table", "selected model", "reproducible analysis"],
+    "hardness_knobs": ["correlated predictors", "heteroscedastic noise", "nested near-miss models", "out-of-sample criterion"],
+    "derivation_rules": "Regenerate data and candidate families. The verifier checks predictive and structural constraints without exposing the winning model."
+  }
+]

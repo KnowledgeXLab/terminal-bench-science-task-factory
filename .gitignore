@@ -1,0 +1,10 @@
+.env
+jobs/
+work/
+generated/opd/*_smoke.jsonl
+generated/VERIFICATION.copy-test.json
+generated/*.tmp
+*.zip
+__pycache__/
+*.pyc
+.pytest_cache/

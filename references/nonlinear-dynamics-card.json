@@ -1,0 +1,8 @@
+{
+  "pattern_id": "nonlinear-dynamics-discovery",
+  "source_family": "mathematical-sciences/applied-mathematics",
+  "workflow": "infer a compact nonlinear dynamical law from noisy multivariate trajectories and validate it on held-out initial conditions",
+  "scientific_outputs": ["symbolic model", "held-out rollout table", "diagnostic report"],
+  "hardness_knobs": ["unknown active basis", "measurement noise", "off-trajectory stress cases", "complexity budget"],
+  "derivation_rules": "Change state dimension, sampling schedule, noise process, and hidden law family. Never reuse source equations, constants, filenames, or answer values."
+}

@@ -1,0 +1,8 @@
+{
+  "pattern_id": "sensor-calibration",
+  "source_family": "engineering-sciences/electrical-engineering",
+  "workflow": "estimate calibration parameters from multi-sensor observations and demonstrate accuracy on an unseen operating regime",
+  "scientific_outputs": ["calibration parameters", "corrected measurements", "residual report"],
+  "hardness_knobs": ["coupled bias and scale", "missing samples", "regime shift", "physical constraints"],
+  "derivation_rules": "Use fresh sensor geometries and values; do not disclose hidden calibration parameters to the agent."
+}

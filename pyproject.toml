@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "terminal-bench-science-task-factory"
+version = "0.1.0"
+description = "External-LLM authoring pipeline for independent Harbor scientific tasks"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+tb-science-task = "tb_science_factory.task_factory:_cli"
+
+[tool.setuptools.packages.find]
+where = ["."]

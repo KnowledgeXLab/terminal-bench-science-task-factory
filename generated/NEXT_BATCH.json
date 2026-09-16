@@ -1,0 +1,22 @@
+{
+    "generated_at":  "2026-09-05",
+    "target_count":  200,
+    "materialized_count":  606,
+    "validated_local_count":  606,
+    "formal_ecp_pending_count":  0,
+    "candidate_file":  "candidates/next_batch.jsonl",
+    "verification_file":  "VERIFICATION.json",
+    "backend_note":  "Local Docker Desktop Harbor/oracle evidence is recorded for validated_local tasks; direct solution/test smoke is supplemental and does not grant reward=1. docker_harbor_verified remains false until formal ECP/CCR cluster acceptance.",
+    "notes":  [
+                  "Initial three test tasks are included when materialized.",
+                  "Tasks with missing generated fixtures or validation errors were not materialized.",
+                  "API keys and .env are excluded from candidate exports and archives.",
+                  "A new batch of 200 candidates was generated and passed local Harbor verification on 2026-09-05; formal ECP/CCR verification remains separate.",
+                  "A second new batch of 200 candidates was generated on 2026-09-05; local Harbor verification is pending."
+              ],
+    "valid_candidate_count":  606,
+    "local_smoke_pass_count":  206,
+    "local_smoke_fail_count":  0,
+    "latest_batch_count":  200,
+    "latest_batch_status":  "draft_pending_local_harbor"
+}
