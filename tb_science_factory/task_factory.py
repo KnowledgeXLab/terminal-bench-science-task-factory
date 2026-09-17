@@ -224,6 +224,15 @@ def _normalize_verifier_fixture_paths(files: dict[str, str]) -> dict[str, str]:
         if target is None:
             # A few tests open a fixture relative to their working directory.
             target = "/tests/" + filename
+            # Generated verifiers commonly define ROOT as their task-local
+            # directory and then use ``ROOT / 'fixture.csv'``.  The verifier
+            # image receives mirrored fixtures under /tests, so make that
+            # implicit path explicit before the test runs.
+            test_code = re.sub(
+                rf"ROOT\s*/\s*(['\"]){re.escape(filename)}\1",
+                f"Path('/tests/{filename}')",
+                test_code,
+            )
         normalized.setdefault("tests/" + filename, fixture)
         copy_line = f"COPY {filename} {target}"
         if copy_line not in dockerfile:
@@ -274,6 +283,7 @@ def _normalize_verifier_fixture_paths(files: dict[str, str]) -> dict[str, str]:
             elif command not in dockerfile:
                 dockerfile = dockerfile.rstrip() + "\n" + command + "\n"
             break
+    normalized["tests/test_outputs.py"] = test_code
     normalized["tests/Dockerfile"] = dockerfile
     return normalized
 

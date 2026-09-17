@@ -6,11 +6,21 @@ build-backend = "setuptools.build_meta"
 name = "terminal-bench-science-task-factory"
 version = "0.1.0"
 description = "External-LLM authoring pipeline for independent Harbor scientific tasks"
-requires-python = ">=3.10"
+readme = "README.md"
+requires-python = ">=3.11"
 dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.urls]
+Repository = "https://github.com/KnowledgeXLab/terminal-bench-science-task-factory"
+Issues = "https://github.com/KnowledgeXLab/terminal-bench-science-task-factory/issues"
 
 [project.scripts]
 tb-science-task = "tb_science_factory.task_factory:_cli"
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["tb_science_factory*"]
+exclude = ["tb_science_factory.tests*"]

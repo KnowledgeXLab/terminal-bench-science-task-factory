@@ -16,7 +16,7 @@ def candidate():
         "subfield": "dynamical-systems",
         "description": "Recover a dynamical law.",
         "instruction_md": text + "Write `/results/output.json`.\n\nYou have 120 seconds to complete this task. Do not cheat by using online solutions or hints specific to this task.\n",
-        "task_toml": text + "schema_version=\"1.4\"\n[task]\nname='terminal-bench-science/ode-derived'\nauthors=[{name=\"Test\",email=\"test@example.com\"}]\nkeywords=[\"ode\"]\n[metadata]\nauthor_name=\"Test\"\nauthor_email=\"test@example.com\"\nauthor_organization=\"Independent Researcher\"\ndomain=\"mathematical-sciences\"\nfield=\"applied-mathematics\"\ntags=[\"ode\"]\n[verifier.environment]\nnetwork_mode=\"no-network\"\n[agent]\ntimeout_sec=120\n[environment]\nnetwork_mode=\"public\"\n",
+        "task_toml": text + "schema_version=\"1.4\"\nartifacts=[\"/results/output.json\"]\n[task]\nname='terminal-bench-science/ode-derived'\nauthors=[{name=\"Test\",email=\"test@example.com\"}]\nkeywords=[\"ode\"]\n[metadata]\nauthor_name=\"Test\"\nauthor_email=\"test@example.com\"\nauthor_organization=\"Independent Researcher\"\ndomain=\"mathematical-sciences\"\nfield=\"applied-mathematics\"\ntags=[\"ode\"]\n[verifier.environment]\nnetwork_mode=\"no-network\"\n[agent]\ntimeout_sec=120\n[environment]\nnetwork_mode=\"public\"\n",
         "files": {
             "environment/Dockerfile": text + "FROM python:3.11-slim\n",
             "solution/solve.sh": text + "#!/bin/sh\n",
@@ -62,7 +62,7 @@ def test_materialize_normalizes_harbor_verifier_context(tmp_path: Path):
     row = candidate()
     row["files"].update(
         {
-            "environment/rollout_requests.csv": "request_id,horizon\nprobe,1\n",
+            "environment/rollout_requests.csv": f"# {CANARY}\nrequest_id,horizon\nprobe,1\n",
             "tests/test_outputs.py": (
                 f"# {CANARY}\nfrom pathlib import Path\n"
                 "requests = ROOT / 'rollout_requests.csv'\n"
@@ -89,7 +89,7 @@ def test_materialize_normalizes_environment_context_copy(tmp_path: Path):
     row = candidate()
     row["files"].update(
         {
-            "environment/input.csv": "x,y\n1,2\n",
+            "environment/input.csv": f"# {CANARY}\nx,y\n1,2\n",
             "environment/Dockerfile": (
                 f"# {CANARY}\nFROM python:3.11-slim\n"
                 "COPY environment/input.csv /workspace/input.csv\n"
