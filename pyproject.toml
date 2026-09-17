@@ -12,6 +12,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+nemo = ["data-designer", "pydantic>=2"]
 
 [project.urls]
 Repository = "https://github.com/KnowledgeXLab/terminal-bench-science-task-factory"
@@ -19,6 +20,7 @@ Issues = "https://github.com/KnowledgeXLab/terminal-bench-science-task-factory/i
 
 [project.scripts]
 tb-science-task = "tb_science_factory.task_factory:_cli"
+tb-science-data-designer = "tb_science_factory.data_designer_pipeline:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
