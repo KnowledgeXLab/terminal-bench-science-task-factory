@@ -44,6 +44,23 @@ python -m tb_science_factory.task_factory export-opd \
 `--allow-unverified` is intended for local format checks only. It must not be
 used to create a production training set.
 
+Export the same verified task set for NeMo Gym with its OpenAI Responses API
+dataset contract:
+
+```bash
+python -m tb_science_factory.task_factory export-gym \
+  --candidates generated/candidates/pilot.jsonl \
+  --verification generated/VERIFICATION.json \
+  --out generated/gym/pilot_verified.jsonl
+```
+
+Each JSONL row contains `responses_create_params.input`, a `question` and
+`id`, and Harbor routing data in `verifier_metadata`. The `agent_ref` field is
+left for `gym dataset collate` to add from the selected agent configuration.
+NeMo Gym creates the agent trajectory during rollout; this export is the task
+dataset consumed by that rollout. Use `--allow-unverified` only for local
+format checks.
+
 ## Repository layout
 
 - `tb_science_factory/`: library, CLI, LLM client, prompts, and unit tests.

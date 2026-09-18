@@ -2,6 +2,9 @@ import tomllib
 from pathlib import Path
 
 root = Path("generated/tasks")
+if not root.is_dir():
+    print("relative_artifact_tasks=0 (generated/tasks is not present; outputs are ignored)")
+    raise SystemExit(0)
 bad = []
 for task_toml in sorted(root.rglob("task.toml")):
     text = task_toml.read_text(encoding="utf-8")

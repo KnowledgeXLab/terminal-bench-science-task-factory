@@ -4,6 +4,9 @@ import re
 from pathlib import Path
 
 root = Path("generated/tasks")
+if not root.is_dir():
+    print(json.dumps({"tasks": 0, "skipped": "generated/tasks is not present (generated outputs are ignored)"}))
+    raise SystemExit(0)
 tasks = sorted({p.parent for p in root.rglob("instruction.md")})
 missing, empty, shebang, reward, canary, heredoc, secret, pybad = [], [], [], [], [], [], [], []
 required = ["instruction.md", "task.toml", "environment/Dockerfile", "solution/solve.sh", "tests/Dockerfile", "tests/test.sh"]

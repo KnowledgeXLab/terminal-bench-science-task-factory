@@ -644,6 +644,11 @@ def _cli() -> int:
     export.add_argument("--verification", type=Path)
     export.add_argument("--out", type=Path, required=True)
     export.add_argument("--allow-unverified", action="store_true")
+    gym = sub.add_parser("export-gym")
+    gym.add_argument("--candidates", type=Path, required=True)
+    gym.add_argument("--verification", type=Path)
+    gym.add_argument("--out", type=Path, required=True)
+    gym.add_argument("--allow-unverified", action="store_true")
     materialize = sub.add_parser("materialize")
     materialize.add_argument("--candidates", type=Path, required=True)
     materialize.add_argument("--out-root", type=Path, required=True)
@@ -663,6 +668,16 @@ def _cli() -> int:
         print(json.dumps({"records": export_opd_records(args.candidates, args.out,
                                                          allow_unverified=args.allow_unverified,
                                                          verification_path=args.verification)}))
+    elif args.command == "export-gym":
+        # Keep the optional NeMo Gym adapter out of the core import path.
+        from .nemo_gym import export_gym_records
+
+        print(json.dumps({"records": export_gym_records(
+            args.candidates,
+            args.out,
+            allow_unverified=args.allow_unverified,
+            verification_path=args.verification,
+        )}))
     else:
         count = 0
         for line in args.candidates.read_text(encoding="utf-8").splitlines():

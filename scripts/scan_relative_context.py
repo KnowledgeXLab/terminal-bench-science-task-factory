@@ -2,6 +2,9 @@ import tomllib
 from pathlib import Path
 
 root = Path("generated/tasks")
+if not root.is_dir():
+    print("generated/tasks is not present; outputs are ignored")
+    raise SystemExit(0)
 for task_toml in sorted(root.rglob("task.toml")):
     cfg = tomllib.loads(task_toml.read_text(encoding="utf-8"))
     values = cfg.get("artifacts", [])
