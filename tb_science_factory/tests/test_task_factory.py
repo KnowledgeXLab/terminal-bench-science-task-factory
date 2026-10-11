@@ -35,11 +35,32 @@ def test_valid_candidate_and_materialize(tmp_path: Path):
     assert (root / "tests/test.sh").is_file()
 
 
+def test_materialize_transfers_workdir_artifacts_to_separate_verifier(tmp_path: Path):
+    import tomllib
+
+    row = candidate()
+    row["task_toml"] = row["task_toml"].replace('/results/output.json', 'outputs/output.json')
+    row["files"]["environment/Dockerfile"] += "WORKDIR /app\n"
+    row["files"]["tests/Dockerfile"] += 'CMD ["/tests/test.sh"]\n'
+    root = materialize_candidate(row, tmp_path)
+    assert tomllib.loads((root / "task.toml").read_text())["artifacts"] == ["/app/outputs/output.json"]
+    assert 'CMD ["sleep", "infinity"]' in (root / "tests/Dockerfile").read_text()
+    assert 'CMD ["/tests/test.sh"]' not in (root / "tests/Dockerfile").read_text()
+
+
 def test_rejects_secret_and_traversal():
     row = candidate()
     row["files"]["../secret"] = "API_KEY=oops"
     errors = validate_candidate(row)
     assert any("unsafe" in error for error in errors)
+
+
+def test_secret_scan_distinguishes_task_paths_from_api_keys():
+    row = candidate()
+    row["instruction_md"] += "Read /task-data/data.csv and write /task-results/result.json.\n"
+    assert validate_candidate(row) == []
+    row["files"]["environment/leaked.txt"] = "token: sk-" + "a" * 32
+    assert any("credential" in error for error in validate_candidate(row))
 
 
 def test_export_opd_skips_invalid(tmp_path: Path):
@@ -133,3 +154,21 @@ def test_materialize_adds_harbor_reward_hook(tmp_path: Path):
     script = (root / "tests/test.sh").read_text(encoding="utf-8")
     assert "reward=/logs/verifier/reward.txt" in script
     assert "trap 'status=$?" in script
+
+
+def test_repair_normalization_synchronizes_timeout_without_changing_science():
+    from tb_science_factory.task_factory import normalize_candidate
+    row = candidate()
+    row["instruction_md"] = row["instruction_md"].replace("120 seconds", "900 seconds")
+    normalized = normalize_candidate(row)
+    assert validate_candidate(normalized) == []
+    assert "900 seconds" not in normalized["instruction_md"]
+    assert "120 seconds" in normalized["instruction_md"]
+    assert "Write `/results/output.json`." in normalized["instruction_md"]
+    assert normalized["description"] == row["description"]
+
+
+def test_conflicting_top_level_files_cannot_override_contract():
+    row = candidate()
+    row["files"]["instruction.md"] = "Conflicting task contract"
+    assert any("conflicts" in e for e in validate_candidate(row))

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import random
 import time
@@ -16,6 +17,26 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
+
+
+def inference_parameters(temperature: float, max_tokens: int) -> dict[str, Any]:
+    """Resolve optional wire parameters; retain legacy behavior when unset."""
+    token_field = os.environ.get("TB_LLM_TOKEN_LIMIT_PARAMETER", "max_tokens")
+    if token_field not in {"max_tokens", "max_completion_tokens"}:
+        raise ValueError("TB_LLM_TOKEN_LIMIT_PARAMETER must be max_tokens or max_completion_tokens")
+    result: dict[str, Any] = {token_field: max_tokens}
+    configured_temperature = os.environ.get("TB_LLM_TEMPERATURE", "default").strip()
+    if configured_temperature != "omit":
+        value = temperature if configured_temperature == "default" else float(configured_temperature)
+        if not math.isfinite(value) or not 0 <= value <= 2:
+            raise ValueError("TB_LLM_TEMPERATURE must be default, omit or a number between 0 and 2")
+        result["temperature"] = value
+    effort = os.environ.get("TB_LLM_REASONING_EFFORT", "").strip()
+    if effort:
+        if effort not in {"none", "minimal", "low", "medium", "high", "xhigh", "max"}:
+            raise ValueError("Invalid TB_LLM_REASONING_EFFORT")
+        result["reasoning_effort"] = effort
+    return result
 
 
 def load_env_file(path: Path) -> list[str]:
@@ -100,9 +121,10 @@ class OpenAICompatibleJSONClient:
     def chat_json(self, *, system: str, user: str, prompt_version: str,
                   temperature: float = 0.2, max_tokens: int = 32000,
                   refresh_cache: bool = False) -> tuple[dict[str, Any], dict[str, Any]]:
+        parameters = inference_parameters(temperature, max_tokens)
         payload_key = {
             "model": self.model, "system": system, "user": user,
-            "temperature": temperature, "max_tokens": max_tokens,
+            **parameters,
             "prompt_version": prompt_version,
         }
         cache_key = hashlib.sha256(
@@ -124,8 +146,7 @@ class OpenAICompatibleJSONClient:
             data=json.dumps({
                 "model": self.model,
                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-                "temperature": temperature,
-                "max_tokens": max_tokens,
+                **parameters,
                 "response_format": {"type": "json_object"},
             }, ensure_ascii=False).encode("utf-8"),
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
