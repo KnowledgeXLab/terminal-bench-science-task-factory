@@ -68,3 +68,24 @@ python scripts/scan_artifacts.py
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development and review guidance.
+
+## Data Designer 并行任务合成（可选）
+
+安装 `python -m pip install -e '.[designer]'`，然后运行：
+
+```bash
+tb-science-designer --requests requests.jsonl --out runs/designer-batch --concurrency 2 --env-file .env
+```
+
+`requests.jsonl` 每行一个独立 reference 输入；路径相对 JSONL 所在目录解析：
+
+```json
+{"request_id":"method-a","reference":"references/a.json","model":"gpt-6-luna","count":1}
+{"request_id":"method-b","reference":"references/b.json","model":"gpt-6-luna","count":2}
+```
+
+Data Designer 自定义列并行执行原生 `generate_candidates()` 和 `materialize_candidate()`，保留模型 API 重试、缓存和候选检查。每项独立输出到 `OUT/items/<request_id>/`，避免同名 task 在不同输入间冲突。`count` 是该输入请求的任务数，`--concurrency` 是并行输入数。
+
+汇总为 `OUT/results.json`，单项结果为 `OUT/items/<request_id>/result.json`，候选为 `candidates.jsonl`，任务为 `tasks/<domain>/<field>/<slug>/`，Data Designer 数据集位于 `OUT/designer/`。所有任务物化才记为 `completed`；无效候选跳过并记录为 `partial`，单项异常记为 `failed`，不阻止其他输入执行。存在未完成项时命令返回非零退出码。
+
+输出目录必须是新目录，不自动重跑或覆盖旧批次。此入口只生产 task，不运行 Oracle 或 Solver，不自动提交 DataAgent 归档；物化成功不代表科学运行验收通过。
