@@ -11,23 +11,22 @@ Choose TB Science to abstract a reusable scientific workflow and design a new in
 
 ## Prepare inputs
 
-Extract an actual workflow and observable scientific outputs from supplied materials; record sources/licenses. Create reference JSON under the run. The CLI parses JSON and supplies it to the model without a fixed input schema. Recommended pattern-card fields are `pattern_id`, `source_family`, `workflow`, `scientific_outputs`, `hardness_knobs`, `derivation_rules`; see [pattern cards](../../../references/pattern_cards.json). An array of cards is not automatically one task per card.
+Extract an actual workflow and observable scientific outputs from supplied materials; record sources/licenses. Create reference JSON at `seed/tb-science/reference.json` under the run. The CLI parses JSON and supplies it to the model without a fixed input schema. Recommended pattern-card fields are `pattern_id`, `source_family`, `workflow`, `scientific_outputs`, `hardness_knobs`, `derivation_rules`; see [pattern cards](../../../references/pattern_cards.json). An array of cards is not automatically one task per card.
 
 Distinguish source facts from proposed task variations. Do not fabricate missing scientific content or use empty JSON to satisfy preparation. If the goal requires reproducing the source problem rather than transferring a pattern, reconsider the other skills.
 
 ## End-to-end entrypoint
 
-In TTF hosted mode, submit `tb.generate` with `reference` and optional positive `count`, then `tb.materialize` with `{}`, then `tasks.collect` with `pipeline: tb-science`. Omitted count uses the host's bounded redundancy target. The host owns execution and model injection; the planner does not shell-run these commands. Native command semantics are:
+In TTF hosted mode, submit `tb.generate` with `reference` and optional positive `count`, then `tasks.collect` with `pipeline: tb-science`. Omitted count uses the host's bounded redundancy target. The host prepares JSONL with `request_id`, `reference`, `model` and `count`, then runs the existing Data Designer entrypoint:
 
 ```bash
-python -m tb_science_factory.task_factory generate   --reference "$REF" --out "$OUT/candidates.jsonl"   --cache-dir "$OUT/cache" --count "$N" --model "$MODEL"
-python -m tb_science_factory.task_factory materialize   --candidates "$OUT/candidates.jsonl" --out-root "$OUT/tasks"
+python -m tb_science_factory.designer --requests "$REQUESTS" --out "$OUT" --concurrency 1 --env-file /dev/null
 ```
 
-Run materialize only after candidate generation succeeds. Keep native candidate contract checks and model-call behavior. Do not force overwrite packages or use new step IDs to repeat generation after failure. No hosted native checkpoint resume is supplied for this integration.
+One native command generates candidates, validates and materializes packages. The planner does not shell-run it. An existing `tb.materialize` step is only a compatibility check of these results; it does not rerun generation or materialization. Do not force overwrite packages or use new step IDs to repeat generation after failure. No hosted native checkpoint resume is supplied for this integration.
 
 ## Results
 
-Candidate records and cache remain in the native output root. Packages are materialized under `tasks/tasks/<domain>/<field>/<slug>/`. Count actual valid candidates and materialized packages: a successful materialize exit may still produce zero tasks. Preserve rejected candidates and errors.
+Read `items/<request_id>/result.json`, `candidates.jsonl`, and the reported task paths. Native candidates, cache and materialized tasks remain in that item directory. Count actual materialized packages; partial or failed native results are not proof that every requested task exists. Preserve rejected candidates and errors.
 
-TB performs structural/file-contract validation and materialization, with no native independent Auditor or Harbor Oracle execution. Do not label this evidence as Oracle-certified or scientifically execution-proven. TTF retains evidence under `native/tb-science/`, checks Harbor structure and collects eligible packages into the shared `tasks/` and `task_manifest.json`; downstream real solver rollout remains a separate host step.
+TB performs structural/file-contract validation and materialization, with no native independent Auditor or Harbor Oracle execution. Do not label this evidence as Oracle-certified or scientifically execution-proven. TTF retains evidence under `tb-science/`, checks Harbor structure and collects eligible packages into the shared `tasks/` and `task_manifest.json`; downstream real solver rollout remains a separate host step.
