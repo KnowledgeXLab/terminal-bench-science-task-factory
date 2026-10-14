@@ -19,6 +19,21 @@ DOMAINS = {"life-sciences", "physical-sciences", "earth-sciences", "mathematical
 REQUIRED_FILES = {"environment/Dockerfile", "solution/solve.sh", "tests/Dockerfile", "tests/test.sh"}
 SECRET_PATTERNS = ("OPENAI_API_KEY", "API_KEY=", "Authorization: Bearer")
 
+# Agent wall-clock budget written into every generated task. The model only classifies the
+# difficulty; the host derives the seconds so the value cannot drift between samples.
+AGENT_TIMEOUT_BASE_SEC = 3600
+DIFFICULTY_TIMEOUT_FACTORS = {"simple": 1, "medium": 2, "hard": 3}
+
+
+def _difficulty_tier(value: Any) -> str | None:
+    tier = str(value or "").strip().lower()
+    return tier if tier in DIFFICULTY_TIMEOUT_FACTORS else None
+
+
+def _agent_timeout_seconds(value: Any) -> int | None:
+    tier = _difficulty_tier(value)
+    return None if tier is None else AGENT_TIMEOUT_BASE_SEC * DIFFICULTY_TIMEOUT_FACTORS[tier]
+
 
 def _slug(value: Any) -> str:
     result = re.sub(r"[^a-z0-9-]+", "-", str(value or "").lower()).strip("-")
@@ -569,6 +584,12 @@ def validate_candidate(candidate: dict[str, Any], *, require_canary: bool = True
         suffix = f"You have {int(timeout)} seconds to complete this task. Do not cheat by using online solutions or hints specific to this task."
         if suffix not in instruction:
             errors.append("instruction timeout suffix does not match task.toml [agent].timeout_sec")
+    expected_timeout = _agent_timeout_seconds(candidate.get("difficulty"))
+    if expected_timeout is None:
+        errors.append("difficulty must be one of simple, medium or hard")
+    elif timeout != expected_timeout:
+        errors.append(f"task.toml [agent].timeout_sec must be {expected_timeout} for difficulty "
+                      f"{_difficulty_tier(candidate.get('difficulty'))}")
     if not slug:
         errors.append("slug is empty")
     return errors
@@ -624,6 +645,14 @@ def normalize_candidate(row: dict[str, Any]) -> dict[str, Any]:
                 )
             )
         )
+    # The agent budget is host-derived, never model-chosen: the tier picks the factor.
+    tier = _difficulty_tier(row.get("difficulty"))
+    if tier is not None:
+        row["difficulty"] = tier
+        if isinstance(row.get("task_toml"), str):
+            seconds = _agent_timeout_seconds(tier)
+            row["task_toml"] = re.sub(r"(\[agent\][\s\S]*?timeout_sec\s*=\s*)\d+",
+                                      rf"\g<1>{seconds}", row["task_toml"], count=1)
     # Harbor CI requires an exact timeout sentence. If a model writes an
     # equivalent prose ending, normalize it deterministically from TOML.
     timeout_match = re.search(r"\[agent\][\s\S]*?timeout_sec\s*=\s*(\d+)", str(row.get("task_toml", "")))

@@ -15,8 +15,9 @@ def candidate():
         "field": "applied-mathematics",
         "subfield": "dynamical-systems",
         "description": "Recover a dynamical law.",
-        "instruction_md": text + "Write `/results/output.json`.\n\nYou have 120 seconds to complete this task. Do not cheat by using online solutions or hints specific to this task.\n",
-        "task_toml": text + "schema_version=\"1.4\"\nartifacts=[\"/results/output.json\"]\n[task]\nname='terminal-bench-science/ode-derived'\nauthors=[{name=\"Test\",email=\"test@example.com\"}]\nkeywords=[\"ode\"]\n[metadata]\nauthor_name=\"Test\"\nauthor_email=\"test@example.com\"\nauthor_organization=\"Independent Researcher\"\ndomain=\"mathematical-sciences\"\nfield=\"applied-mathematics\"\ntags=[\"ode\"]\n[verifier.environment]\nnetwork_mode=\"no-network\"\n[agent]\ntimeout_sec=120\n[environment]\nnetwork_mode=\"public\"\n",
+        "difficulty": "simple",
+        "instruction_md": text + "Write `/results/output.json`.\n\nYou have 3600 seconds to complete this task. Do not cheat by using online solutions or hints specific to this task.\n",
+        "task_toml": text + "schema_version=\"1.4\"\nartifacts=[\"/results/output.json\"]\n[task]\nname='terminal-bench-science/ode-derived'\nauthors=[{name=\"Test\",email=\"test@example.com\"}]\nkeywords=[\"ode\"]\n[metadata]\nauthor_name=\"Test\"\nauthor_email=\"test@example.com\"\nauthor_organization=\"Independent Researcher\"\ndomain=\"mathematical-sciences\"\nfield=\"applied-mathematics\"\ntags=[\"ode\"]\n[verifier.environment]\nnetwork_mode=\"no-network\"\n[agent]\ntimeout_sec=3600\n[environment]\nnetwork_mode=\"public\"\n",
         "files": {
             "environment/Dockerfile": text + "FROM python:3.11-slim\n",
             "solution/solve.sh": text + "#!/bin/sh\n",
@@ -159,11 +160,11 @@ def test_materialize_adds_harbor_reward_hook(tmp_path: Path):
 def test_repair_normalization_synchronizes_timeout_without_changing_science():
     from tb_science_factory.task_factory import normalize_candidate
     row = candidate()
-    row["instruction_md"] = row["instruction_md"].replace("120 seconds", "900 seconds")
+    row["instruction_md"] = row["instruction_md"].replace("3600 seconds", "900 seconds")
     normalized = normalize_candidate(row)
     assert validate_candidate(normalized) == []
     assert "900 seconds" not in normalized["instruction_md"]
-    assert "120 seconds" in normalized["instruction_md"]
+    assert "3600 seconds" in normalized["instruction_md"]
     assert "Write `/results/output.json`." in normalized["instruction_md"]
     assert normalized["description"] == row["description"]
 
@@ -217,3 +218,25 @@ def test_truncated_artifact_path_is_rejected():
     row["task_toml"] = row["task_toml"].replace("/results/output.json", "/results/output.")
     errors = validate_candidate(normalize_candidate(row))
     assert any("must name a file" in error for error in errors)
+
+
+def test_difficulty_tier_derives_the_agent_timeout():
+    from tb_science_factory.task_factory import normalize_candidate
+
+    for tier, seconds in (("simple", 3600), ("medium", 7200), ("hard", 10800)):
+        row = candidate()
+        row["difficulty"] = tier
+        # whatever the model wrote is replaced by the host-derived budget
+        row["task_toml"] = row["task_toml"].replace("timeout_sec=3600", "timeout_sec=7")
+        normalized = normalize_candidate(row)
+        assert validate_candidate(normalized) == []
+        assert f"timeout_sec={seconds}" in normalized["task_toml"]
+        assert f"You have {seconds} seconds" in normalized["instruction_md"]
+
+
+def test_difficulty_tier_is_required_and_must_match_the_budget():
+    row = candidate()
+    row["difficulty"] = "medium"
+    assert any("must be 7200" in error for error in validate_candidate(row))
+    row["difficulty"] = "why the scientific reasoning is hard"
+    assert any("difficulty must be one of" in error for error in validate_candidate(row))
