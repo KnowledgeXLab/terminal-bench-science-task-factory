@@ -26,6 +26,10 @@ INPUT_FILES = ("reference",)
 
 class GeneratorParams(BaseModel):
     output: str
+    # Per-request HTTP timeout and retry budget for the native model client. The defaults
+    # match the historical 180s x 3; a thinking model drafting a full task spec needs more.
+    timeout: int = 180
+    max_retries: int = 3
 
 
 def validate_request(row: dict) -> None:
@@ -45,7 +49,9 @@ def generate_task(row: dict, generator_params: GeneratorParams) -> dict:
     result = {"request_id": row["request_id"], "status": "failed", "task_paths": []}
     try:
         reference = json.loads(Path(row["reference"]).read_text(encoding="utf-8"))
-        client = OpenAICompatibleJSONClient(model=row["model"], cache_dir=directory / "cache")
+        client = OpenAICompatibleJSONClient(model=row["model"], cache_dir=directory / "cache",
+                                            timeout=generator_params.timeout,
+                                            max_retries=generator_params.max_retries)
         candidates = generate_candidates(
             reference,
             output_path=directory / "candidates.jsonl",
@@ -77,10 +83,13 @@ def _write_result(path: Path, result: dict) -> None:
     temporary.replace(path)
 
 
-def run_batch(requests: Path, output: Path, *, concurrency: int = 2) -> list[dict]:
+def run_batch(requests: Path, output: Path, *, concurrency: int = 2,
+              timeout: int = 180, max_retries: int = 3) -> list[dict]:
     """Run a new batch; never overwrite or implicitly replay an existing batch."""
     if concurrency < 1:
         raise ValueError("concurrency must be positive")
+    if timeout < 1 or max_retries < 1:
+        raise ValueError("timeout and max_retries must be positive")
     rows = [json.loads(line) for line in requests.read_text(encoding="utf-8").splitlines() if line.strip()]
     if not rows:
         raise ValueError("requests must contain at least one row")
@@ -111,7 +120,8 @@ def run_batch(requests: Path, output: Path, *, concurrency: int = 2) -> list[dic
         dd.CustomColumnConfig(
             name="task_result",
             generator_function=generate_task,
-            generator_params=GeneratorParams(output=str(output)),
+            generator_params=GeneratorParams(output=str(output), timeout=timeout,
+                                             max_retries=max_retries),
         )
     )
     designer = DataDesigner()
@@ -139,11 +149,16 @@ def main() -> int:
     parser.add_argument("--requests", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--concurrency", type=int, default=2)
+    parser.add_argument("--timeout", type=int, default=180,
+                        help="per-request HTTP timeout in seconds for the native model client")
+    parser.add_argument("--max-retries", type=int, default=3,
+                        help="attempts per native model request")
     parser.add_argument("--env-file", type=Path)
     args = parser.parse_args()
     if args.env_file:
         load_env_file(args.env_file)
-    results = run_batch(args.requests, args.out, concurrency=args.concurrency)
+    results = run_batch(args.requests, args.out, concurrency=args.concurrency,
+                        timeout=args.timeout, max_retries=args.max_retries)
     print(
         json.dumps(
             {
