@@ -46,6 +46,17 @@ def _text_files(candidate: dict[str, Any]) -> dict[str, str]:
     return normalized
 
 
+def _invalid_artifacts(artifacts: list[Any]) -> list[Any]:
+    """Return artifact entries whose filename is missing or truncated.
+
+    A model or gateway can truncate a path (``/workspace/output/result.``) while it is still
+    a non-empty list of strings, so the shape check alone cannot catch it. Relativeness is not
+    an error here: ``_normalize_task_toml`` resolves it against the environment ``WORKDIR``.
+    """
+    return [value for value in artifacts
+            if not isinstance(value, str) or not Path(value).name or Path(value).name.endswith(".")]
+
+
 def _missing_docker_copies(files: dict[str, str]) -> list[str]:
     """Find COPY sources that are absent from the generated package map."""
     missing: list[str] = []
@@ -380,6 +391,57 @@ RUN mkdir -p /workspace/data /workspace/output /workspace/input && \
     return normalized
 
 
+def _nested_artifacts(parsed: dict[str, Any]) -> list[str] | None:
+    """Locate an ``artifacts`` array that a model nested inside a table.
+
+    Returns the array only when the top level has no ``artifacts`` key and exactly one
+    table does, so an ambiguous document is left for the validator to reject.
+    """
+    if "artifacts" in parsed:
+        return None
+    found: list[Any] = []
+
+    def visit(node: dict[str, Any]) -> None:
+        for key, value in node.items():
+            if key == "artifacts":
+                found.append(value)
+            elif isinstance(value, dict):
+                visit(value)
+
+    visit(parsed)
+    if len(found) != 1:
+        return None
+    value = found[0]
+    if not isinstance(value, list) or not value or not all(isinstance(item, str) for item in value):
+        return None
+    return value
+
+
+def _hoist_nested_artifacts(task_toml: str, parsed: dict[str, Any]) -> str:
+    """Move a nested ``artifacts`` declaration into the top-level region.
+
+    TOML assigns a bare key written after a ``[table]`` header to that table, so a model
+    that appends ``artifacts`` to the end of the document produces ``environment.artifacts``
+    instead. Harbor reads the key at the top level only and no task sub-table owns it, so
+    relocating the declaration with its values untouched is a lossless repair.
+    """
+    nested = _nested_artifacts(parsed)
+    if nested is None:
+        return task_toml
+    stripped = re.sub(r"(?ms)^[ \t]*artifacts[ \t]*=[ \t]*\[.*?\]", "", task_toml, count=1)
+    if stripped == task_toml:
+        return task_toml
+    declaration = "artifacts = " + json.dumps(nested, ensure_ascii=False) + "\n"
+    lines = stripped.splitlines(keepends=True)
+    for index, line in enumerate(lines):
+        if line.lstrip().startswith("["):
+            lines.insert(index, declaration)
+            break
+    else:
+        lines.append(declaration)
+    return "".join(lines)
+
+
 def _normalize_task_toml(task_toml: str, files: dict[str, str] | None = None) -> str:
     """Repair common LLM metadata that Pydantic/Harbor rejects.
 
@@ -391,6 +453,16 @@ def _normalize_task_toml(task_toml: str, files: dict[str, str] | None = None) ->
         parsed = tomllib.loads(task_toml)
     except tomllib.TOMLDecodeError:
         return task_toml
+    # A model that appends ``artifacts`` after the last table nests it under that table
+    # (``environment.artifacts``), which hides it from Harbor's top-level lookup.
+    hoisted = _hoist_nested_artifacts(task_toml, parsed)
+    if hoisted != task_toml:
+        try:
+            parsed = tomllib.loads(hoisted)
+        except tomllib.TOMLDecodeError:
+            pass
+        else:
+            task_toml = hoisted
     task = parsed.get("task")
     authors = task.get("authors") if isinstance(task, dict) else None
     if isinstance(authors, list) and authors and all(isinstance(author, str) for author in authors):
@@ -470,6 +542,11 @@ def validate_candidate(candidate: dict[str, Any], *, require_canary: bool = True
     artifacts = parsed_toml.get("artifacts")
     if not isinstance(artifacts, list) or not artifacts:
         errors.append("task.toml top-level artifacts must list verifier inputs")
+    else:
+        invalid = _invalid_artifacts(artifacts)
+        if invalid:
+            errors.append("task.toml artifact paths must name a file: "
+                          + ", ".join(repr(value) for value in invalid[:5]))
     metadata = parsed_toml.get("metadata", {})
     if isinstance(task_section, dict):
         authors = task_section.get("authors")

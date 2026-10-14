@@ -172,3 +172,48 @@ def test_conflicting_top_level_files_cannot_override_contract():
     row = candidate()
     row["files"]["instruction.md"] = "Conflicting task contract"
     assert any("conflicts" in e for e in validate_candidate(row))
+
+
+def test_nested_artifacts_are_hoisted_to_the_top_level():
+    import tomllib
+    from tb_science_factory.task_factory import normalize_candidate
+
+    # A model that appends ``artifacts`` after the last table nests it under that table,
+    # which hides the key from Harbor's top-level lookup.
+    for declaration in ('artifacts = ["/results/output.json"]\n',
+                        'artifacts = [\n  "/results/output.json",\n]\n'):
+        row = candidate()
+        row["task_toml"] = row["task_toml"].replace('artifacts=["/results/output.json"]\n', "")
+        row["task_toml"] += declaration
+        assert any("artifacts" in error for error in validate_candidate(row))
+        normalized = normalize_candidate(row)
+        assert validate_candidate(normalized) == []
+        parsed = tomllib.loads(normalized["task_toml"])
+        assert parsed["artifacts"] == ["/results/output.json"]
+        assert "artifacts" not in parsed["environment"]
+
+
+def test_already_top_level_artifacts_are_left_alone():
+    from tb_science_factory.task_factory import normalize_candidate
+
+    row = candidate()
+    assert normalize_candidate(row)["task_toml"] == row["task_toml"]
+
+
+def test_ambiguous_nested_artifacts_are_not_repaired():
+    from tb_science_factory.task_factory import normalize_candidate
+
+    row = candidate()
+    row["task_toml"] = row["task_toml"].replace('artifacts=["/results/output.json"]\n', "")
+    row["task_toml"] = row["task_toml"].replace("[metadata]\n", '[metadata]\nartifacts = ["/a.json"]\n', 1)
+    row["task_toml"] += 'artifacts = ["/b.json"]\n'
+    assert normalize_candidate(row)["task_toml"] == row["task_toml"]
+
+
+def test_truncated_artifact_path_is_rejected():
+    from tb_science_factory.task_factory import normalize_candidate
+
+    row = candidate()
+    row["task_toml"] = row["task_toml"].replace("/results/output.json", "/results/output.")
+    errors = validate_candidate(normalize_candidate(row))
+    assert any("must name a file" in error for error in errors)
