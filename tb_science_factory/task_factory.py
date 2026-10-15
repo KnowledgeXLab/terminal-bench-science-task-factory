@@ -668,6 +668,26 @@ def normalize_candidate(row: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
+def _request_candidate_batch(llm: OpenAICompatibleJSONClient, reference: dict[str, Any], count: int,
+                             *, refresh_cache: bool = False) -> tuple[list[Any], dict[str, Any], int | None]:
+    """Ask the model for ``count`` candidates, keeping the surplus instead of failing.
+
+    The contract asks for exactly ``count`` objects, but a model that returns more has still
+    produced usable candidates: trimming the surplus keeps the batch exactly ``count`` without
+    discarding it. Only a short response is a real violation, and the caller retries it.
+    """
+    response, meta = llm.chat_json(system=SYSTEM_PROMPT, user=package_prompt(reference, count),
+                                   prompt_version=PROMPT_VERSION, refresh_cache=refresh_cache)
+    raw = response.get("candidates")
+    if not isinstance(raw, list):
+        raise ValueError("candidates must be a JSON array")
+    truncated_from = None
+    if len(raw) > count:
+        truncated_from = len(raw)
+        raw = raw[:count]
+    return raw, meta, truncated_from
+
+
 def generate_candidates(reference: dict[str, Any], *, output_path: Path, cache_dir: Path,
                         model: str, count: int = 3,
                         client: OpenAICompatibleJSONClient | None = None,
@@ -676,16 +696,23 @@ def generate_candidates(reference: dict[str, Any], *, output_path: Path, cache_d
 
     Calls are intentionally sequential so rate limits and cache behavior remain
     deterministic. The model only sees the pattern card, never a benchmark
-    answer key or hidden fixture.
+    answer key or hidden fixture. A surplus of candidates is trimmed to ``count``;
+    a shortfall is retried once with a fresh call.
     """
     if count <= 0:
         raise ValueError("count must be positive")
     llm = client or OpenAICompatibleJSONClient(model=model, cache_dir=cache_dir, use_env_proxy=use_env_proxy)
-    response, meta = llm.chat_json(system=SYSTEM_PROMPT, user=package_prompt(reference, count),
-                                   prompt_version=PROMPT_VERSION)
-    raw = response.get("candidates")
-    if not isinstance(raw, list) or len(raw) != count or not all(isinstance(x, dict) for x in raw):
-        raise ValueError(f"expected exactly {count} candidate objects")
+    raw, meta, truncated_from = _request_candidate_batch(llm, reference, count)
+    if len(raw) < count:
+        # The cache key is derived from the request, so replaying it would return the same
+        # short response. Force one fresh call before reporting the shortfall.
+        raw, meta, truncated_from = _request_candidate_batch(llm, reference, count, refresh_cache=True)
+    if len(raw) < count:
+        raise ValueError(f"expected exactly {count} candidate objects, got {len(raw)}")
+    if not all(isinstance(x, dict) for x in raw):
+        raise ValueError("every candidate must be a JSON object")
+    if truncated_from is not None:
+        meta = {**meta, "truncated_from": truncated_from}
     rows: list[dict[str, Any]] = []
     for index, candidate in enumerate(raw, 1):
         row = dict(candidate)

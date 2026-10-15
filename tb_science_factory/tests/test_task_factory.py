@@ -240,3 +240,82 @@ def test_difficulty_tier_is_required_and_must_match_the_budget():
     assert any("must be 7200" in error for error in validate_candidate(row))
     row["difficulty"] = "why the scientific reasoning is hard"
     assert any("difficulty must be one of" in error for error in validate_candidate(row))
+
+
+class _StubClient:
+    """Records the refresh flag so the retry path can be asserted without a network call."""
+
+    def __init__(self, *payloads):
+        self.payloads = list(payloads)
+        self.calls = []
+
+    def chat_json(self, *, refresh_cache=False, **kwargs):
+        self.calls.append(refresh_cache)
+        payload = self.payloads.pop(0) if len(self.payloads) > 1 else self.payloads[0]
+        return payload, {"cache_key": "stub", "cache_hit": not refresh_cache}
+
+
+def _batch(n):
+    return {"candidates": [candidate() for _ in range(n)]}
+
+
+def test_surplus_candidates_are_trimmed_not_discarded(tmp_path):
+    from tb_science_factory.task_factory import generate_candidates
+
+    client = _StubClient(_batch(10))
+    rows = generate_candidates({"pattern_id": "p"}, output_path=tmp_path / "c.jsonl",
+                               cache_dir=tmp_path, model="m", count=9, client=client)
+    assert len(rows) == 9
+    assert client.calls == [False]
+    assert rows[0]["generation"]["truncated_from"] == 10
+    assert (tmp_path / "c.jsonl").read_text().count("\n") == 9
+
+
+def test_exact_batch_is_untouched(tmp_path):
+    from tb_science_factory.task_factory import generate_candidates
+
+    client = _StubClient(_batch(9))
+    rows = generate_candidates({"pattern_id": "p"}, output_path=tmp_path / "c.jsonl",
+                               cache_dir=tmp_path, model="m", count=9, client=client)
+    assert len(rows) == 9
+    assert client.calls == [False]
+    assert "truncated_from" not in rows[0]["generation"]
+
+
+def test_short_batch_retries_with_a_fresh_call(tmp_path):
+    from tb_science_factory.task_factory import generate_candidates
+
+    # First call is short, the forced refresh returns a full batch.
+    client = _StubClient(_batch(8), _batch(9))
+    rows = generate_candidates({"pattern_id": "p"}, output_path=tmp_path / "c.jsonl",
+                               cache_dir=tmp_path, model="m", count=9, client=client)
+    assert len(rows) == 9
+    assert client.calls == [False, True], "the retry must bypass the cache"
+
+
+def test_short_batch_after_retry_fails_loudly(tmp_path):
+    from tb_science_factory.task_factory import generate_candidates
+
+    client = _StubClient(_batch(8))
+    with pytest.raises(ValueError, match="expected exactly 9 candidate objects, got 8"):
+        generate_candidates({"pattern_id": "p"}, output_path=tmp_path / "c.jsonl",
+                            cache_dir=tmp_path, model="m", count=9, client=client)
+    assert client.calls == [False, True]
+
+
+def test_candidates_must_be_a_json_array(tmp_path):
+    from tb_science_factory.task_factory import generate_candidates
+
+    client = _StubClient({"candidates": {"slug": "x"}})
+    with pytest.raises(ValueError, match="candidates must be a JSON array"):
+        generate_candidates({"pattern_id": "p"}, output_path=tmp_path / "c.jsonl",
+                            cache_dir=tmp_path, model="m", count=1, client=client)
+
+
+def test_every_candidate_must_be_an_object(tmp_path):
+    from tb_science_factory.task_factory import generate_candidates
+
+    client = _StubClient({"candidates": [candidate(), "not-an-object"]})
+    with pytest.raises(ValueError, match="every candidate must be a JSON object"):
+        generate_candidates({"pattern_id": "p"}, output_path=tmp_path / "c.jsonl",
+                            cache_dir=tmp_path, model="m", count=2, client=client)
