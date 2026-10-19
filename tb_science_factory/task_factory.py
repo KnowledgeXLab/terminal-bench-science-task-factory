@@ -98,6 +98,104 @@ def _missing_docker_copies(files: dict[str, str]) -> list[str]:
     return missing
 
 
+COPY_REPAIR_PROMPT_VERSION = "tb-science-copy-repair-v1"
+
+
+def _copy_repair_prompt(candidate: dict[str, Any], missing: list[str]) -> tuple[str, str]:
+    """Ask only for the files the Dockerfiles COPY but the package never emitted.
+
+    The whole-package prompt already states that every COPY source must exist; a
+    model that still references a file it never wrote needs to be told which exact
+    names are absent, not asked to rewrite the task.
+    """
+    wanted = sorted({entry.split("COPY source ", 1)[-1] for entry in missing})
+    system = (
+        "You repair a single missing piece of an already-written task package. "
+        "Return only a JSON object of the form {\"files\": {\"<path>\": \"<content>\"}}. "
+        "Do not rewrite, restate or comment on anything else."
+    )
+    lines = [
+        "These files are COPY sources of environment/Dockerfile or tests/Dockerfile, "
+        "but they were never produced:",
+        *[f"- {name}" for name in wanted],
+        "",
+        "Write each of them. They are task input data: the solution and the verifier "
+        "read them, so the content must be consistent with the instruction and with "
+        "tests/test_outputs.py.",
+        "",
+        "instruction:",
+        str(candidate.get("instruction_md", ""))[:4000],
+        "",
+        "existing file list:",
+        ", ".join(sorted((candidate.get("files") or {}).keys())),
+        "",
+        "For each missing name return its real content. Deterministic, self-consistent, "
+        "no placeholders such as TODO.",
+    ]
+    return system, "\n".join(lines)
+
+
+def repair_missing_copy_sources(
+    candidate: dict[str, Any], *, client: OpenAICompatibleJSONClient | None
+) -> dict[str, Any]:
+    """One targeted repair attempt: supply the missing COPY sources only.
+
+    Returns the candidate unchanged when nothing is missing, when no client is
+    available, or when the model answers with nothing usable -- a repair may never
+    make a candidate worse than the verdict it already had.
+    """
+    try:
+        files = _text_files(candidate)
+    except ValueError:
+        return candidate
+    missing = _missing_docker_copies(files)
+    if not missing or client is None:
+        return candidate
+
+    wanted = {entry.split("COPY source ", 1)[-1] for entry in missing}
+
+    def _is_wanted(name: str) -> bool:
+        """Accept either spelling _missing_docker_copies itself accepts."""
+        if name in wanted:
+            return True
+        for context in ("environment/", "tests/"):
+            if name.startswith(context) and name[len(context):] in wanted:
+                return True
+        return False
+
+    try:
+        system, user = _copy_repair_prompt(candidate, missing)
+        response, _meta = client.chat_json(
+            system=system, user=user, prompt_version=COPY_REPAIR_PROMPT_VERSION
+        )
+    except Exception:
+        return candidate
+    supplied = response.get("files") if isinstance(response, dict) else None
+    if not isinstance(supplied, dict) or not supplied:
+        return candidate
+
+    added: list[str] = []
+    merged = dict(files)
+    for name, content in supplied.items():
+        if not _is_wanted(name) or not isinstance(content, str) or not content.strip():
+            continue
+        if name in merged:
+            continue
+        merged[name] = content
+        added.append(name)
+    if not added:
+        return candidate
+
+    repaired = dict(candidate)
+    try:
+        repaired["files"] = _text_files({"files": merged})
+    except ValueError:
+        return candidate
+    repaired["validation_errors"] = validate_candidate(repaired)
+    repaired["copy_repair"] = {"added": sorted(added), "prompt_version": COPY_REPAIR_PROMPT_VERSION}
+    return repaired
+
+
 def _normalize_docker_copies(files: dict[str, str]) -> dict[str, str]:
     """Rewrite Dockerfiles for Harbor's per-directory build contexts."""
     normalized = dict(files)

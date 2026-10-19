@@ -19,7 +19,11 @@ from data_designer.interface import DataDesigner
 from pydantic import BaseModel
 
 from .llm_client import OpenAICompatibleJSONClient, load_env_file
-from .task_factory import generate_candidates, materialize_candidate
+from .task_factory import (
+    generate_candidates,
+    materialize_candidate,
+    repair_missing_copy_sources,
+)
 
 INPUT_FILES = ("reference",)
 
@@ -63,6 +67,12 @@ def generate_task(row: dict, generator_params: GeneratorParams) -> dict:
         result["validation_errors"] = []
         for candidate in candidates:
             errors = candidate.get("validation_errors") or []
+            if errors:
+                # Targeted repair: a candidate whose Dockerfile COPIES a file the
+                # package never wrote is one model call away from valid, and
+                # regenerating the whole package would discard everything else.
+                candidate = repair_missing_copy_sources(candidate, client=client)
+                errors = candidate.get("validation_errors") or []
             if errors:
                 result["validation_errors"].append(
                     {"candidate_id": candidate["candidate_id"], "errors": errors}
